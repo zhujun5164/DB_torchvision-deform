@@ -10,7 +10,11 @@ This is a PyToch implementation of DBNet([arxiv](https://arxiv.org/abs/1911.0894
 Part of the code is inherited from [MegReader](https://github.com/Megvii-CSG/MegReader).
 
 ## ToDo List
+- [x] allow validate polygon data in training session
+- [x] fix some problem
+- [x] change the deformconv to torchvision version
 
+## DB List
 - [x] Release code
 - [x] Document for Installation
 - [x] Trained models
@@ -158,6 +162,9 @@ Check the paths of data_dir and data_list in the base_*.yaml file. For better pe
 You can also try distributed training (**Note that the distributed mode is not fully tested. I am not sure whether it can achieves the same performance as non-distributed training.**)
 
 ```CUDA_VISIBLE_DEVICES=0,1,2,3 python -m torch.distributed.launch --nproc_per_node=4 train.py path-to-yaml-file --num_gpus 4```
+
+validate polygon data in training session
+```CUDA_VISIBLE_DEVICES=0,1,2,3 python train.py path-to-yaml-file --validate --polygon```
 
 ## Improvements
 Note that the current implementation is written by pure Python code except for the deformable convolution operator. Thus, the code can be further optimized by some optimization skills, such as [TensorRT](https://github.com/NVIDIA/TensorRT) for the model forward and efficient C++ code for the [post-processing function](https://github.com/MhLiao/DB/blob/d0d855df1c66b002297885a089a18d50a265fa30/structure/representers/seg_detector_representer.py#L26).
