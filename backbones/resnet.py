@@ -1,6 +1,8 @@
 import torch.nn as nn
 import math
 import torch.utils.model_zoo as model_zoo
+import torchvision
+import torch
 BatchNorm2d = nn.BatchNorm2d
 
 __all__ = ['ResNet', 'resnet18', 'resnet34', 'resnet50', 'resnet101',
@@ -47,26 +49,16 @@ class BasicBlock(nn.Module):
                                    padding=1, bias=False)
         else:
             deformable_groups = dcn.get('deformable_groups', 1)
-            if not self.with_modulated_dcn:
-                from assets.ops.dcn import DeformConv
-                conv_op = DeformConv
-                offset_channels = 18
-            else:
-                from assets.ops.dcn import ModulatedDeformConv
-                conv_op = ModulatedDeformConv
-                offset_channels = 27
+            self.offset_channels = 2 * 3**2 * deformable_groups
+            self.mask_channel = 3**2 * deformable_groups
+
+            self.conv2 = torchvision.ops.DeformConv2d(
+                planes, planes, kernel_size=3, stride=stride, padding=1, groups=deformable_groups, bias=False
+            )
+
             self.conv2_offset = nn.Conv2d(
-                planes,
-                deformable_groups * offset_channels,
-                kernel_size=3,
-                padding=1)
-            self.conv2 = conv_op(
-                planes,
-                planes,
-                kernel_size=3,
-                padding=1,
-                deformable_groups=deformable_groups,
-                bias=False)
+                planes, deformable_groups * 3 * 3**2, kernel_size=3, stride=stride, padding=1, bias=True
+            )
         self.bn2 = BatchNorm2d(planes)
         self.downsample = downsample
         self.stride = stride
@@ -81,14 +73,17 @@ class BasicBlock(nn.Module):
         # out = self.conv2(out)
         if not self.with_dcn:
             out = self.conv2(out)
-        elif self.with_modulated_dcn:
-            offset_mask = self.conv2_offset(out)
-            offset = offset_mask[:, :18, :, :]
-            mask = offset_mask[:, -9:, :, :].sigmoid()
-            out = self.conv2(out, offset, mask)
         else:
-            offset = self.conv2_offset(out)
-            out = self.conv2(out, offset)
+            offset_mask = self.conv2_offset(out)
+            offset, mask = torch.split(
+                offset_mask,
+                split_size_or_sections=[self.offset_channels, self.mask_channel],
+                dim=1
+            )
+
+            mask = torch.sigmoid(mask)
+            out = self.conv2(out, offset, mask=mask)
+
         out = self.bn2(out)
 
         if self.downsample is not None:
@@ -118,21 +113,17 @@ class Bottleneck(nn.Module):
                                    stride=stride, padding=1, bias=False)
         else:
             deformable_groups = dcn.get('deformable_groups', 1)
-            if not self.with_modulated_dcn:
-                from assets.ops.dcn import DeformConv
-                conv_op = DeformConv
-                offset_channels = 18
-            else:
-                from assets.ops.dcn import ModulatedDeformConv
-                conv_op = ModulatedDeformConv
-                offset_channels = 27
+            self.offset_channels = 2 * 3**2 * deformable_groups
+            self.mask_channel = 3**2 * deformable_groups
+
+            self.conv2 = torchvision.ops.DeformConv2d(
+                planes, planes, kernel_size=3, stride=stride, padding=1, groups=deformable_groups, bias=False
+            )
+
             self.conv2_offset = nn.Conv2d(
-                planes, deformable_groups * offset_channels,
-                kernel_size=3,
-                padding=1)
-            self.conv2 = conv_op(
-                planes, planes, kernel_size=3, padding=1, stride=stride,
-                deformable_groups=deformable_groups, bias=False)
+                planes, deformable_groups * 3 * 3**2, kernel_size=3, stride=stride, padding=1, bias=True
+            )
+
         self.bn2 = BatchNorm2d(planes)
         self.conv3 = nn.Conv2d(planes, planes * 4, kernel_size=1, bias=False)
         self.bn3 = BatchNorm2d(planes * 4)
@@ -152,14 +143,17 @@ class Bottleneck(nn.Module):
         # out = self.conv2(out)
         if not self.with_dcn:
             out = self.conv2(out)
-        elif self.with_modulated_dcn:
-            offset_mask = self.conv2_offset(out)
-            offset = offset_mask[:, :18, :, :]
-            mask = offset_mask[:, -9:, :, :].sigmoid()
-            out = self.conv2(out, offset, mask)
         else:
-            offset = self.conv2_offset(out)
-            out = self.conv2(out, offset)
+            offset_mask = self.conv2_offset(out)
+            offset, mask = torch.split(
+                offset_mask,
+                split_size_or_sections=[self.offset_channels, self.mask_channel],
+                dim=1
+            )
+
+            mask = torch.sigmoid(mask)
+            out = self.conv2(out, offset, mask=mask)
+
         out = self.bn2(out)
         out = self.relu(out)
 
@@ -307,8 +301,7 @@ def deformable_resnet50(pretrained=True, **kwargs):
                    stage_with_dcn=[False, True, True, True],
                    **kwargs)
     if pretrained:
-        model.load_state_dict(model_zoo.load_url(
-            model_urls['resnet50']), strict=False)
+        model.load_state_dict(torch.load('./models/resnet50-19c8e357.pth'), strict=False)
     return model
 
 

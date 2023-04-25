@@ -53,7 +53,10 @@ class SegDetectorModel(nn.Module):
         else:
             data = batch.to(self.device)
         data = data.float()
-        pred = self.model(data, training=self.training)
+        if training:
+            pred = self.model(data, training=self.training)
+        else:
+            pred = self.model(data)
 
         if self.training:
             for key, value in batch.items():

@@ -8,10 +8,11 @@ from data.data_loader import DistributedSampler
 
 
 class Trainer:
-    def __init__(self, experiment: Experiment):
+    def __init__(self, experiment: Experiment, cmd):
         self.init_device()
 
         self.experiment = experiment
+        self.cmd = cmd
         self.structure = experiment.structure
         self.logger = experiment.logger
         self.model_saver = experiment.train.model_saver
@@ -77,7 +78,7 @@ class Trainer:
                 if self.experiment.validation and\
                         self.steps % self.experiment.validation.interval == 0 and\
                         self.steps > self.experiment.validation.exempt:
-                    self.validate(validation_loaders, model, epoch, self.steps)
+                    self.validate(validation_loaders, model, epoch, self.steps, self.cmd['polygon'], self.cmd['box_thresh'])
                 self.logger.report_time('Validating ')
                 if self.logger.verbose:
                     torch.cuda.synchronize()
@@ -98,14 +99,13 @@ class Trainer:
             if epoch > self.experiment.train.epochs:
                 self.model_saver.save_checkpoint(model, 'final')
                 if self.experiment.validation:
-                    self.validate(validation_loaders, model, epoch, self.steps)
+                    self.validate(validation_loaders, model, epoch, self.steps, self.cmd['polygon'], self.cmd['box_thresh'])
                 self.logger.info('Training done')
                 break
             iter_delta = 0
 
     def train_step(self, model, optimizer, batch, epoch, step, **kwards):
         optimizer.zero_grad()
-
         results = model.forward(batch, training=True)
         if len(results) == 2:
             l, pred = results
@@ -140,17 +140,17 @@ class Trainer:
 
             self.logger.report_time('Logging')
 
-    def validate(self, validation_loaders, model, epoch, step):
+    def validate(self, validation_loaders, model, epoch, step, polygon, box_thresh):
         all_matircs = {}
         model.eval()
         for name, loader in validation_loaders.items():
             if self.experiment.validation.visualize:
                 metrics, vis_images = self.validate_step(
-                    loader, model, True)
+                    loader, model, polygon, box_thresh, True)
                 self.logger.images(
                     os.path.join('vis', name), vis_images, step)
             else:
-                metrics, vis_images = self.validate_step(loader, model, False)
+                metrics, vis_images = self.validate_step(loader, model, polygon, box_thresh, False)
             for _key, metric in metrics.items():
                 key = name + '/' + _key
                 if key in all_matircs:
@@ -164,20 +164,19 @@ class Trainer:
         model.train()
         return all_matircs
 
-    def validate_step(self, data_loader, model, visualize=False):
+    def validate_step(self, data_loader, model, polygon=False, box_thresh=0.6, visualize=False):
         raw_metrics = []
         vis_images = dict()
         for i, batch in tqdm(enumerate(data_loader), total=len(data_loader)):
             pred = model.forward(batch, training=False)
             output = self.structure.representer.represent(batch, pred)
-            raw_metric, interested = self.structure.measurer.validate_measure(
-                batch, output)
+            raw_metric = self.structure.measurer.validate_measure(batch, output, is_output_polygon=polygon, box_thresh=box_thresh)
             raw_metrics.append(raw_metric)
 
-            if visualize and self.structure.visualizer:
-                vis_image = self.structure.visualizer.visualize(
-                    batch, output, interested)
-                vis_images.update(vis_image)
+            # if visualize and self.structure.visualizer:
+            #     vis_image = self.structure.visualizer.visualize(
+            #         batch, output, interested)
+            #     vis_images.update(vis_image)
         metrics = self.structure.measurer.gather_measure(
             raw_metrics, self.logger)
         return metrics, vis_images

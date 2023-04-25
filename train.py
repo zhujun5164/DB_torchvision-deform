@@ -45,6 +45,11 @@ def main():
     parser.add_argument('-d', '--distributed', action='store_true', dest='distributed', help='Use distributed training')
     parser.add_argument('--local_rank', dest='local_rank', default=0, type=int, help='Use distributed training')
     parser.add_argument('-g', '--num_gpus', dest='num_gpus', default=4, type=int, help='The number of accessible gpus')
+    parser.add_argument('--polygon', action='store_true',
+                        help='output polygons if true')
+    parser.add_argument('--box_thresh', type=float, default=0.6,
+                        help='The threshold to replace it in the representers')
+
     parser.set_defaults(debug=False)
     parser.set_defaults(benchmark=True)
 
@@ -63,7 +68,7 @@ def main():
 
     if not args['print_config_only']:
         torch.backends.cudnn.benchmark = args['benchmark']
-        trainer = Trainer(experiment)
+        trainer = Trainer(experiment, args)
         trainer.train()
 
 if __name__ == '__main__':
