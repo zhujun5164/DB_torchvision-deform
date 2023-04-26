@@ -169,7 +169,7 @@ class Trainer:
         vis_images = dict()
         for i, batch in tqdm(enumerate(data_loader), total=len(data_loader)):
             pred = model.forward(batch, training=False)
-            output = self.structure.representer.represent(batch, pred)
+            output = self.structure.representer.represent(batch, pred, is_output_polygon=polygon)
             raw_metric = self.structure.measurer.validate_measure(batch, output, is_output_polygon=polygon, box_thresh=box_thresh)
             raw_metrics.append(raw_metric)
 
